@@ -78,7 +78,6 @@ export async function GET(req: NextRequest) {
         'X-Goog-FieldMask': FIELD_MASK,
       },
       body: JSON.stringify(body),
-      // @ts-expect-error next cache
       next: { revalidate: 300 },
     });
 
