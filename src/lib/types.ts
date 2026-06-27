@@ -1,4 +1,4 @@
-// ─── Categories ───────────────────────────────────────────────────────────────
+﻿// ─── Categories ───────────────────────────────────────────────────────────────
 
 export type CategoryId = 'all' | 'food' | 'drinks' | 'entertainment' | 'shopping' | 'hotels';
 
@@ -7,7 +7,7 @@ export interface Category {
   label: string;
   emoji: string;
   color: string;
-  /** Google Places types to include */
+  /** Google Places (New) API types — must be Table A types */
   placeTypes: string[];
   /** YouTube search terms to append */
   ytTerms: string[];
@@ -19,7 +19,7 @@ export const CATEGORIES: Category[] = [
     label: 'All',
     emoji: '🔥',
     color: '#f97316',
-    placeTypes: ['restaurant', 'cafe', 'bar', 'food', 'store', 'shopping_mall', 'lodging'],
+    placeTypes: ['restaurant', 'cafe', 'bar', 'shopping_mall', 'tourist_attraction', 'lodging'],
     ytTerms: ['kuliner', 'street food', 'review', 'viral'],
   },
   {
@@ -27,7 +27,7 @@ export const CATEGORIES: Category[] = [
     label: 'Food',
     emoji: '🍜',
     color: '#f97316',
-    placeTypes: ['restaurant', 'cafe', 'bakery', 'meal_takeaway', 'food'],
+    placeTypes: ['restaurant', 'cafe', 'bakery'],
     ytTerms: ['kuliner', 'street food', 'makan', 'food review', 'warung'],
   },
   {
@@ -51,7 +51,7 @@ export const CATEGORIES: Category[] = [
     label: 'Shopping',
     emoji: '🛍️',
     color: '#3b82f6',
-    placeTypes: ['shopping_mall', 'clothing_store', 'store', 'supermarket'],
+    placeTypes: ['shopping_mall', 'clothing_store', 'department_store', 'supermarket'],
     ytTerms: ['belanja', 'mall', 'thrift', 'pasar'],
   },
   {
@@ -59,7 +59,7 @@ export const CATEGORIES: Category[] = [
     label: 'Stay',
     emoji: '🏨',
     color: '#14b8a6',
-    placeTypes: ['lodging', 'hotel', 'hostel'],
+    placeTypes: ['lodging'],
     ytTerms: ['hotel review', 'staycation', 'penginapan'],
   },
 ];
@@ -67,14 +67,14 @@ export const CATEGORIES: Category[] = [
 // ─── Place (Google Places Nearby Search result) ────────────────────────────
 
 export interface Place {
-  id: string;               // place_id
+  id: string;
   name: string;
-  vicinity: string;         // short address
-  rating: number;           // 1–5
+  vicinity: string;
+  rating: number;
   userRatingsTotal: number;
-  priceLevel?: number;      // 0–4
+  priceLevel?: number;
   types: string[];
-  photoRef?: string;        // photo_reference for /api/places/photo proxy
+  photoRef?: string;
   openNow?: boolean;
   lat: number;
   lng: number;
@@ -100,6 +100,6 @@ export interface SearchState {
   lat: number;
   lng: number;
   label: string;
-  areaName: string;   // extracted neighbourhood name used in queries
+  areaName: string;
   radiusMeters: number;
 }
