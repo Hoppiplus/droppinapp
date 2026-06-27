@@ -1,12 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import type { Place, CategoryId } from '@/lib/types';
 import { CATEGORIES } from '@/lib/types';
 
-const PLACES_BASE = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json';
+const PLACES_BASE = 'https://places.googleapis.com/v1/places:searchNearby';
+
+const PRICE_MAP: Record<string, number> = {
+  PRICE_LEVEL_FREE: 0,
+  PRICE_LEVEL_INEXPENSIVE: 1,
+  PRICE_LEVEL_MODERATE: 2,
+  PRICE_LEVEL_EXPENSIVE: 3,
+  PRICE_LEVEL_VERY_EXPENSIVE: 4,
+};
 
 function categoryForTypes(types: string[]): CategoryId {
   const t = new Set(types);
-  if (t.has('lodging') || t.has('hotel')) return 'hotels';
+  if (t.has('lodging') || t.has('hotel') || t.has('motel') || t.has('hostel')) return 'hotels';
   if (t.has('bar') || t.has('night_club')) return 'drinks';
   if (t.has('shopping_mall') || t.has('clothing_store') || t.has('store')) return 'shopping';
   if (t.has('movie_theater') || t.has('amusement_park') || t.has('tourist_attraction') || t.has('museum')) return 'entertainment';
@@ -32,19 +40,48 @@ export async function GET(req: NextRequest) {
   }
 
   const cat = CATEGORIES.find((c) => c.id === category) ?? CATEGORIES[0];
+  const includedTypes = category === 'all'
+    ? ['restaurant', 'cafe', 'bar', 'tourist_attraction', 'shopping_mall']
+    : cat.placeTypes;
 
-  // For 'all', don't filter by type — just return nearby interesting places
-  const typeParam = category === 'all' ? 'establishment' : cat.placeTypes[0];
+  const body = {
+    includedTypes,
+    maxResultCount: 20,
+    locationRestriction: {
+      circle: {
+        center: { latitude: parseFloat(lat), longitude: parseFloat(lng) },
+        radius: Math.min(parseFloat(radius), 1500),
+      },
+    },
+  };
 
-  const params = new URLSearchParams({
-    location: `${lat},${lng}`,
-    radius: Math.min(parseInt(radius), 1500).toString(),
-    type: typeParam,
-    key: apiKey,
-  });
+  const FIELD_MASK = [
+    'places.id',
+    'places.displayName',
+    'places.location',
+    'places.rating',
+    'places.userRatingCount',
+    'places.priceLevel',
+    'places.types',
+    'places.photos',
+    'places.currentOpeningHours',
+    'places.shortFormattedAddress',
+    'places.formattedAddress',
+  ].join(',');
 
   try {
-    const res = await fetch(`${PLACES_BASE}?${params}`, { next: { revalidate: 300 } });
+    const res = await fetch(PLACES_BASE, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': FIELD_MASK,
+      },
+      body: JSON.stringify(body),
+      // @ts-expect-error next cache
+      next: { revalidate: 300 },
+    });
+
     if (!res.ok) {
       const err = await res.json();
       return NextResponse.json({ error: 'Places API error', detail: err }, { status: res.status });
@@ -52,31 +89,23 @@ export async function GET(req: NextRequest) {
 
     const data = await res.json();
 
-    if (data.status === 'REQUEST_DENIED') {
-      return NextResponse.json({ error: data.error_message ?? 'Places API denied' }, { status: 403 });
-    }
-
-    const places: Place[] = (data.results ?? [])
-      .slice(0, 20)
-      .map((r: any) => ({
-        id: r.place_id,
-        name: r.name,
-        vicinity: r.vicinity ?? '',
-        rating: r.rating ?? 0,
-        userRatingsTotal: r.user_ratings_total ?? 0,
-        priceLevel: r.price_level,
-        types: r.types ?? [],
-        photoRef: r.photos?.[0]?.photo_reference ?? null,
-        openNow: r.opening_hours?.open_now,
-        lat: r.geometry.location.lat,
-        lng: r.geometry.location.lng,
-        category: categoryForTypes(r.types ?? []),
-      }))
-      // Sort by a "heat score": rating × log(reviews+1) — surfaces quality places with real volume
-      .sort((a: Place, b: Place) => {
-        const score = (p: Place) => p.rating * Math.log(p.userRatingsTotal + 1);
-        return score(b) - score(a);
-      });
+    const places: Place[] = (data.places ?? []).map((r: any) => ({
+      id: r.id,
+      name: r.displayName?.text ?? 'Unknown',
+      vicinity: r.shortFormattedAddress ?? r.formattedAddress ?? '',
+      rating: r.rating ?? 0,
+      userRatingsTotal: r.userRatingCount ?? 0,
+      priceLevel: r.priceLevel ? PRICE_MAP[r.priceLevel] : undefined,
+      types: r.types ?? [],
+      photoRef: r.photos?.[0]?.name ?? null,
+      openNow: r.currentOpeningHours?.openNow,
+      lat: r.location.latitude,
+      lng: r.location.longitude,
+      category: categoryForTypes(r.types ?? []),
+    })).sort((a: Place, b: Place) => {
+      const score = (p: Place) => p.rating * Math.log(p.userRatingsTotal + 1);
+      return score(b) - score(a);
+    });
 
     return NextResponse.json({ places });
   } catch (e) {

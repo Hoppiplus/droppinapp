@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Proxy for Google Places photo references.
- * Google Places photos require the API key and can't be fetched directly from the browser
- * without exposing the key, so we route them through a server-side proxy.
+ * Proxy for Google Places (New) photo references.
+ * New Places API photo names look like: places/ChIJ.../photos/AUacShh...
+ * Endpoint: https://places.googleapis.com/v1/{photoName}/media
  */
 export async function GET(req: NextRequest) {
   const ref = req.nextUrl.searchParams.get('ref');
@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) return NextResponse.json({ error: 'Key not configured' }, { status: 500 });
 
-  const url = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxwidth}&photo_reference=${encodeURIComponent(ref)}&key=${apiKey}`;
+  // New Places API photo URL format
+  const url = `https://places.googleapis.com/v1/${ref}/media?maxWidthPx=${maxwidth}&key=${apiKey}`;
 
   const res = await fetch(url);
   if (!res.ok) return NextResponse.json({ error: 'Photo fetch failed' }, { status: res.status });
