@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import type { CategoryId, SearchState } from '@/lib/types';
 import { CATEGORIES } from '@/lib/types';
@@ -17,8 +17,22 @@ export default function Home() {
   const [searchState, setSearchState] = useState<SearchState | null>(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | undefined>(undefined);
+  const initialLoadDone = useRef(false);
 
   const { places, videos, loading, error, discover } = useDiscover();
+
+  // Build a shareable URL from current state
+  const buildShareUrl = useCallback((state: SearchState, cat: CategoryId, rad: number) => {
+    if (typeof window === 'undefined') return '';
+    const url = new URL(window.location.href);
+    url.searchParams.set('lat', state.lat.toFixed(6));
+    url.searchParams.set('lng', state.lng.toFixed(6));
+    url.searchParams.set('label', state.label);
+    url.searchParams.set('r', rad.toString());
+    url.searchParams.set('cat', cat);
+    return url.toString();
+  }, []);
 
   const handleLocationSelected = useCallback(
     (lat: number, lng: number, label: string) => {
@@ -27,22 +41,63 @@ export default function Home() {
       setSearchState(state);
       setPanelOpen(true);
       discover({ lat, lng, areaName, radiusMeters: radius, category });
+      setShareUrl(buildShareUrl(state, category, radius));
     },
-    [radius, category, discover]
+    [radius, category, discover, buildShareUrl]
   );
 
   const handleCategoryChange = (c: CategoryId) => {
     setCategory(c);
     if (searchState) {
       discover({ lat: searchState.lat, lng: searchState.lng, areaName: searchState.areaName, radiusMeters: radius, category: c });
+      setShareUrl(buildShareUrl(searchState, c, radius));
     }
   };
 
   const handleMapsLoaded = useCallback(() => setMapsLoaded(true), []);
 
+  // Write URL params whenever searchState, category, or radius change
+  useEffect(() => {
+    if (!searchState) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('lat', searchState.lat.toFixed(6));
+    url.searchParams.set('lng', searchState.lng.toFixed(6));
+    url.searchParams.set('label', searchState.label);
+    url.searchParams.set('r', radius.toString());
+    url.searchParams.set('cat', category);
+    window.history.replaceState({}, '', url.toString());
+    setShareUrl(url.toString());
+  }, [searchState, category, radius]);
+
+  // On mount: read URL params and trigger discovery if they exist
+  useEffect(() => {
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const lat = parseFloat(params.get('lat') ?? '');
+    const lng = parseFloat(params.get('lng') ?? '');
+    const label = params.get('label') ?? '';
+    const r = parseInt(params.get('r') ?? '500');
+    const cat = (params.get('cat') ?? 'all') as CategoryId;
+
+    if (!isNaN(lat) && !isNaN(lng) && label) {
+      const areaName = extractAreaName(label);
+      const state: SearchState = { lat, lng, label, areaName, radiusMeters: r };
+      setRadius(r);
+      setCategory(cat);
+      setSearchState(state);
+      setPanelOpen(true);
+      // Wait for maps to load before discovering
+      const tryDiscover = () => discover({ lat, lng, areaName, radiusMeters: r, category: cat });
+      // Discovery can be called even before maps since it uses fetch
+      tryDiscover();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-brand-bg">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <header className="shrink-0 flex items-center gap-3 px-4 py-3 bg-brand-panel border-b border-brand-border z-20">
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xl">📍</span>
@@ -74,7 +129,7 @@ export default function Home() {
         </button>
       </header>
 
-      {/* ── Category filter bar ─────────────────────────────────────────────── */}
+      {/* Category filter bar */}
       <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-brand-panel border-b border-brand-border overflow-x-auto no-scrollbar">
         {CATEGORIES.map((cat) => (
           <button
@@ -115,7 +170,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── Main ────────────────────────────────────────────────────────────── */}
+      {/* Main */}
       <div className="flex flex-1 overflow-hidden">
         {/* Map */}
         <div className={`relative transition-all duration-300 ${panelOpen ? 'hidden sm:block sm:flex-1' : 'flex-1'}`}>
@@ -128,7 +183,7 @@ export default function Home() {
 
           {!searchState && mapsLoaded && (
             <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-brand-panel/90 backdrop-blur-sm border border-brand-border text-brand-muted text-xs px-4 py-2 rounded-full pointer-events-none">
-              📍 Drop a pin to discover what's happening there
+              📍 Drop a pin to discover what&apos;s happening there
             </div>
           )}
         </div>
@@ -144,6 +199,7 @@ export default function Home() {
             error={error}
             searchLabel={searchState?.label ?? null}
             areaName={searchState?.areaName ?? null}
+            shareUrl={shareUrl}
           />
         </aside>
       </div>
